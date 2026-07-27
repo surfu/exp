@@ -39,6 +39,18 @@ with mp.tasks.vision.HandLandmarker.create_from_options(options) as det:
                         mp_drawing_styles.get_default_hand_landmarks_style(),
                         mp_drawing_styles.get_default_hand_connections_style()
                     )
+                ind = hand_landmarks[8]
+                ind_2 = hand_landmarks[7]
+                mid = hand_landmarks[12]
+                mid_2 = hand_landmarks[11]
+                thumb_tip = hand_landmarks[16]
+                thumb_mcp = hand_landmarks[13]
+                
+                up = ind.y<ind_2.y and mid.y<mid_2.y
+                dwn = thumb_tip.y >thumb_mcp.y
+                if up and dwn:
+                    blur = cv2.blur(resided_vid,(20,20))
+                    resided_vid = blur
 
         cv2.imshow('test',resided_vid)
         
