@@ -11,7 +11,7 @@ options = mp.tasks.vision.HandLandmarkerOptions(
     min_hand_detection_confidence=0.5,
     min_tracking_confidence=0.5
 )
-video_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "WIN_20260726_14_44_53_Pro.mp4")
+video_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "video.mp4")
 latest_result = None
 vid = cv2.VideoCapture(video_path)
 
@@ -31,7 +31,7 @@ with mp.tasks.vision.HandLandmarker.create_from_options(options) as det:
             handedness = res.handedness
             for idx in range(len(hand_lst)):
                 hand_landmarks = hand_lst[idx]
-                handedness = handedness[idx]
+                ness = handedness[idx]
                 mp_drawing.draw_landmarks(
                         resided_vid,
                         hand_landmarks,
