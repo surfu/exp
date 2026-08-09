@@ -1,4 +1,4 @@
-import cv2 as cv, mediapipe as mp, random, time
+import cv2 as cv, mediapipe as mp, random, time, math, numpy as np
 
 base, vis = mp.tasks.BaseOptions, mp.tasks.vision
 options = vis.HandLandmarkerOptions(
@@ -14,60 +14,86 @@ cap = cv.VideoCapture(0)
 cap.set(cv.CAP_PROP_FRAME_WIDTH, 1920)
 cap.set(cv.CAP_PROP_FRAME_HEIGHT, 1080)
 
-active_words, last_spawn_time, font_size, word, SPAWN_DELAY = [], 0, 1.2, "I Love U", 0.3
-start_y = -(len(word) - 1) * 40
+run,clr = False ,0
 
+clol = list((
+    "COLORMAP_AUTUMN",
+    "COLORMAP_BONE",
+    "COLORMAP_CIVIDIS",
+    "COLORMAP_COOL",
+    "COLORMAP_DEEPGREEN",
+    "COLORMAP_HOT",
+    "COLORMAP_HSV",
+    "COLORMAP_INFERNO",
+    "COLORMAP_JET",
+    "COLORMAP_MAGMA",
+    "COLORMAP_OCEAN"
+))
+lst = []
 with vis.HandLandmarker.create_from_options(options) as landmarker:
     while cap.isOpened():
+        print(fps)
         ret, frame = cap.read()
         if not ret: break
 
         # 1. BLUR CAPTURE FIRST (Strong blur on background only)
-        blurred_frame = cv.blur(frame, (51, 51))
         img = cv.flip(frame, 1)
 
-        # 2. Crop 9:16
+        # 2. crop 9:16
         h, w, _ = img.shape
-        crop = cv.resize(img,(w // 2, h // 2))
-        ch, cw, _ = crop.shape
+        # img = cv.resize(img,(w // 2, h // 2))
+        h,w,_= img.shape
 
         # 3. MediaPipe Tracking
-        mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv.cvtColor(crop, cv.COLOR_BGR2RGB))
+        cv.rectangle(img, (120, 50),( 190, 120), (255,0,0), -1)
+        cv.rectangle(img, (190, 50),( 260, 120), (0,255,0), -1)
+        cv.rectangle(img, (260, 50),( 330, 120), (0,0,255), -1)
+        mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv.cvtColor(img, cv.COLOR_BGR2RGB))
         res = landmarker.detect_for_video(mp_img, int(time.time() * 1000))
 
         if res.hand_landmarks:
-            for hand in res.hand_landmarks:
+            for i in range(len(res.hand_landmarks)):
+                hand = res.hand_landmarks[i]
                 mp_draw.draw_landmarks(
-                    crop, hand, mp_hands.HAND_CONNECTIONS,
+                    img, hand, mp_hands.HAND_CONNECTIONS,
                     mp_styles.get_default_hand_landmarks_style(),
                     mp_styles.get_default_hand_connections_style()
                 )
-                is_peace_sign = (hand[12].y < hand[9].y and 
-                                 hand[8].y < hand[5].y and 
-                                 hand[16].y > hand[13].y)
-                curr_time = time.time()
-                if is_peace_sign and (curr_time - last_spawn_time > SPAWN_DELAY):
-                    active_words.append({
-                        'x': random.randint(1, w - 30),
-                        'y': start_y,
-                        'font_size': float(random.randint(9, 13)) / 10
-                    })
-                    last_spawn_time = curr_time
-                if is_peace_sign:
-                    crop = cv.blur(crop,(20,20))
-                    for item in active_words[:]:
-                        item['y'] += 10
-                        
-                        for j in range(len(word)):
-                            char_y = item['y'] + j * 40
-                            if char_y >= 0:
-                                cv.putText(crop, word[j], (item['x'], char_y), 
-                                        cv.FONT_HERSHEY_PLAIN, item['font_size'], (0, 0, 150), 2, cv.LINE_AA)
+                hand_label = res.handedness[i][0].category_name
+                is_sigh_r = (hand_label == "Right"and float(hand[5].x) > float(hand[4].x) and float(hand[5].y)<float(hand[4].y))
+                is_sigh_l = (hand_label == "Left" and float(hand[5].x) < float(hand[4].x) and float(hand[5].y)>float(hand[4].y))
+                is_sigh = False
+                if is_sigh_l:
+                    lst.append("a")
+                    print('l')
+                if is_sigh_r:
+                    print('r')
+                    lst.append("s")
+                if len(lst) > 15:
+                    lst = lst[-15:]
+                if len(lst) >= 3 and lst[-3:] == ["a", "s", "a"]:
+                    is_sigh = True
+                if is_sigh_l:
+                    print("ueu")
+                    h, w = img.shape[:2]
+                    film = img.astype(np.float32)
+                    film[:, :, 0] *= 0.80
+                    film[:, :, 1] *= 0.95
+                    film[:, :, 2] *= 1.15
+                    film = np.clip(film, 0, 255).astype(np.uint8)
+                    grain = np.random.randint(-18, 18, (h, w, 3), dtype=np.int16)
+                    film = np.clip(film.astype(np.int16) + grain, 0, 255).astype(np.uint8)
+                    kernel_x = cv.getGaussianKernel(w, w / 2)
+                    kernel_y = cv.getGaussianKernel(h, h / 2)
+                    mask = (kernel_y * kernel_x.T) / (kernel_y * kernel_x.T).max()
+                    for i in range(3):
+                        film[:, :, i] = (film[:, :, i] * mask).astype(np.uint8)
+                    img = film
+                    img[:, :, 0] = img[:, :, 0] * 0.7  # Lower Blue
+                    img[:, :, 2] = cv.add(img[:, :, 2], 30)  # Boost Red
 
-                        if item['y'] >= ch:
-                            active_words.remove(item)
-
-        cv.imshow("test", crop)
+        output.write(img)
+        cv.imshow("test", img)
         if cv.waitKey(1) & 0xFF == ord('q') or cv.getWindowProperty("test", cv.WND_PROP_VISIBLE) < 1: break
 
 cap.release()
