@@ -1,50 +1,56 @@
-import cv2 as cv, numpy as np
+import cv2, mediapipe as mp
 
-cap = cv.VideoCapture(0)
-lego_tile = cv.imread("lego_tile.png", cv.IMREAD_UNCHANGED)
-window_name = "Lego Mosaic w Texture"
-cv.imshow(window_name, np.zeros((480, 500, 3), dtype=np.uint8))
-cv.createTrackbar("Brick Size", window_name, 40, 100,lambda x: None )
-while True:
-    run, img = cap.read()
-    if not run:
-        break
-    img = cv.flip(img,1)
-    img = cv.cvtColor(img, cv.COLOR_BGR2HSV)
-    img[:,:,1] = np.clip(img[:,:,1]*1.5,0,255)
-    img = cv.cvtColor(img, cv.COLOR_HSV2BGR)
-    brick_size = cv.getTrackbarPos("Brick Size", window_name)
-    if brick_size<2:
-        brick_size = 2
-    h, w = img.shape[:2]
+base , vis = mp.tasks.BaseOptions, mp.tasks.vision
 
-    w = (w // brick_size) * brick_size
-    h = (h // brick_size) * brick_size
-    img = cv.resize(img, (w, h))
+opt = vis.HandLandmarkerOptions(
+    base_options=base(model_asset_path='hand_landmarker.task'),
+    running_mode=vis.RunningMode.VIDEO,
+    num_hands=2
+)
 
-    cols = w // brick_size
-    rows = h // brick_size
-    small = cv.resize(img, (cols, rows), interpolation=cv.INTER_LINEAR)
-    result = cv.resize(small, (w, h), interpolation=cv.INTER_NEAREST)
+cap = cv2.VideoCapture(0)
 
-    lego_resized = cv.resize(lego_tile, (brick_size, brick_size))
+fps = 0
 
-    if lego_resized.shape[2] == 4:
-        b_tile, g_tile, r_tile, alpha = cv.split(lego_resized)
-        tile_rgb = cv.merge([b_tile, g_tile, r_tile]).astype(float)
-        alpha_f = alpha.astype(float) / 255.0
-        alpha_3c = cv.merge([alpha_f, alpha_f, alpha_f])
-    else:
-        tile_rgb = lego_resized[:, :, :3].astype(float)
-        alpha_3c = np.ones((brick_size, brick_size, 3), dtype=float)
+with vis.HandLandmarker.create_from_options(opt) as landmarker:
+    while True:
+        run, img = cap.read()
+        if not run: break
 
-    for y in range(0, h, brick_size):
-        for x in range(0, w, brick_size):
-            roi = result[y : y + brick_size, x : x + brick_size].astype(float)
-            blended = tile_rgb * alpha_3c + roi * (1.0 - alpha_3c)
-            result[y : y + brick_size, x : x + brick_size] = blended.astype(np.uint8)
 
-    cv.imshow(window_name, result)
-    if cv.waitKey(1) & 0xFF == ord('q') or cv.getWindowProperty(window_name, cv.WND_PROP_VISIBLE) < 1: break
+
+        img = cv2.flip(img,1)
+
+        fps+=33
+        
+        mp_img = mp.Image(mp.ImageFormat.SRGB,cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+        res = landmarker.detect_for_video(mp_img, fps)
+
+        h, w, _ = img.shape
+
+        if res.hand_landmarks:
+            for hand in res.hand_landmarks:
+                dist = (((hand[4].x-hand[8].x)**2+(hand[4].y-hand[8].y)**2)**0.5)*100   #math.dist
+
+                pt1 = (int(hand[4].x * w), int(hand[4].y * h))
+                pt2 = (int(hand[8].x * w), int(hand[8].y * h))
+
+                cv2.line(img, pt1, pt2, (0, 0, 0), 2)
+
+                cent = (int((hand[4].x+hand[8].x)*w/2), int((hand[4].y+hand[8].y)*h/2)) 
+
+                cv2.circle(img,cent,10,(255,255,255),-1)
+                cv2.circle(img,cent,11,(0,0,0),1)
+
+                result = 1 + (dist - 2) * 99 / 34   #can be switch to numpy.interp()
+                result = max(1, min(result, 100))
+
+                cv2.putText(img, str(int(result)), (40, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+        
+        cv2.imshow('title',img)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+    
 cap.release()
-cv.destroyAllWindows()
+cv2.destroyAllWindows()
+
