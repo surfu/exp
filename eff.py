@@ -1,42 +1,58 @@
 import cv2
 import numpy as np
 
-width, height = 1000, 778
-canva = np.zeros((height, width, 3), dtype=np.uint8)
+def nothing(x):
+    pass
 
-phase_x1 = np.random.uniform(0, 50, 3)
-phase_y1 = np.random.uniform(0, 50, 3)
-phase_x2 = np.random.uniform(0, 50, 3)
-phase_y2 = np.random.uniform(0, 50, 3)
-t = 0.0
+window_name = "Control Panel"
+cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
+cv2.createTrackbar("Mode (True/False)", window_name, 0,1, nothing)
 
-while True: 
-    canva = (canva.astype(np.float32) * 0.92).astype(np.uint8)
+cap = cv2.VideoCapture(0)
 
-    center = (width / 2, height / 2)
-    M = cv2.getRotationMatrix2D(center, angle=0.2, scale=1.005)
-    canva = cv2.warpAffine(canva, M, (width, height), flags=cv2.INTER_LINEAR)
+accumulated_space = None
 
-    cx1 = int(width / 2 + np.sin(t * 1.1 + phase_x1[0]) * 180 + np.sin(t * 2.7 + phase_x1[1]) * 90)
-    cy1 = int(height / 2 + np.cos(t * 0.9 + phase_y1[0]) * 140 + np.sin(t * 2.4 + phase_y1[1]) * 70)
-    cx2 = int(width / 2 + np.cos(t * 1.4 + phase_x2[0]) * 160 + np.sin(t * 2.2 + phase_x2[1]) * 100)
-    cy2 = int(height / 2 + np.sin(t * 1.3 + phase_y2[0]) * 150 + np.cos(t * 2.9 + phase_y2[1]) * 80)
+while cap.isOpened():
+    is_active = bool(cv2.getTrackbarPos("Mode (True/False)", window_name))
+    ret, frame = cap.read()
+    if not ret:
+        break
+        
+    frame = cv2.flip(frame, 1)
 
-    overlay = np.zeros((height, width, 3), dtype=np.uint8)
-    cv2.circle(overlay, (cx1, cy1), 35, (255, 255, 255), -1)
-    cv2.circle(overlay, (cx2, cy2), 20, (255, 255, 255), -1)
+    if not is_active:
+        output_frame = frame
+    else:
+        h, w = frame.shape[:2]
+        
+        dust_noise = np.random.normal(0, 25, (h, w, 3)).astype(np.float32)
 
-    overlay = cv2.GaussianBlur(overlay, (51, 51), 0)
-    
-    canva = cv2.add(canva, overlay)
-    
-    gray = cv2.cvtColor(canva, cv2.COLOR_BGR2GRAY)
-    gray = cv2.blur(gray,(20,20))
-    organic_colored = cv2.applyColorMap(gray, cv2.COLORMAP_PINK)
+        nebula = cv2.GaussianBlur(frame, (31, 31), 0)
+        nebula = np.float32(nebula) + dust_noise
+        
+        if accumulated_space is None:
+            accumulated_space = nebula
+        else:
+            accumulated_space = cv2.addWeighted(accumulated_space, 0.85, nebula, 0.15, 0)
 
-    cv2.imshow("Title", organic_colored)
-    t += 0.01
-    if cv2.waitKey(1) & 0xFF == ord("q"):
+        final_space = np.clip(accumulated_space, 0, 255).astype(np.uint8)
+
+        gray_nebula = cv2.cvtColor(final_space, cv2.COLOR_BGR2GRAY)
+        twilight_glow = cv2.applyColorMap(gray_nebula, cv2.COLORMAP_TWILIGHT)
+        
+        twilight_glow = cv2.cvtColor(twilight_glow, cv2.COLOR_BGR2HSV)
+        twilight_glow[:, :, 2] = 255 - twilight_glow[:, :, 2] 
+        twilight_glow = cv2.cvtColor(twilight_glow, cv2.COLOR_HSV2BGR)
+
+        twilight_glow = cv2.GaussianBlur(twilight_glow, (55, 55), 0)
+
+        final_space = cv2.addWeighted(final_space, 0.2, twilight_glow, 0.8, 0)
+        output_frame = cv2.convertScaleAbs(final_space, alpha=1.2, beta=-20)
+
+    cv2.imshow(window_name, output_frame)
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
+cap.release()
 cv2.destroyAllWindows()
