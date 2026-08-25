@@ -8,24 +8,15 @@ while cap.isOpened():
     if not ret:
         break
     frame = cv2.flip(frame,1)
-    h,w,c = frame.shape  
-    frame = frame.astype(np.float32)
+    h,w,c = frame.shape
 
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    _,gray = cv2.threshold(gray,1,255,cv2.THRESH_BINARY)
+    hsv_img = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV).astype(np.float32)
+    hsv_img[:,:,1] = np.clip(hsv_img[:,:,1]*2, 0,255) 
+    hsv_img[:,:,2] = np.clip(hsv_img[:,:,2]*5, 0,255) 
 
-    noise = np.random.normal(0,1000,(h,w,c)).astype(np.float32)
-    noise= np.clip(noise + 128, 0, 255).astype(np.uint8)
-
-    stratched = np.tile(noise[:,w//2,:][:, np.newaxis, :], (1,w,1))
-    stratched = cv2.applyColorMap(stratched,cv2.COLORMAP_INFERNO)
-    stratched = stratched.astype(np.float32)
-
-    # output_frame = cv2.addWeighted(stratched,0.5,frame,0.5,0)
-    # output_frame = cv2.convertScaleAbs(output_frame, alpha=1.2, beta=-20)
-    output_frame = np.zeros_like(frame, dtype=np.uint8)
-    output_frame[gray==0] = stratched[gray==0] 
-    output_frame[gray==255] = frame[gray==255].astype(np.uint8)
+    img = cv2.cvtColor(hsv_img.astype(np.uint8), cv2.COLOR_HSV2BGR)
+    img = cv2.blur(img, (20,20))
+    output_frame = cv2.addWeighted(frame,0.8,img,0.2,0)
 
     cv2.imshow('test', output_frame)
 
