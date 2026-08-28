@@ -1,41 +1,63 @@
-# Invoke-WebRequest -Uri "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task" -OutFile "hand_landmarker.task"
-import cv2, mediapipe as mp
-base, vis = mp.tasks.BaseOptions, mp.tasks.vision
+import cv2
+import numpy as np
 
-opt = vis.HandLandmarkerOptions(
-    base('hand_landmarker.task'),
-    vis.RunningMode.VIDEO,
-    1
-)
-fps = 0
-cap  = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(1)
 
-with vis.HandLandmarker.create_from_options(opt) as det:
-    while True:
-        run, img = cap.read()
+while cap.isOpened():
+    run, img = cap.read()
+    if not run:
+        break
+    
+    h, w = img.shape[:2]
+    cell_size = 6
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    
+    # 1. Чистий білий холст для фінального рендеру
+    output = np.ones((h, w, 3), dtype=np.uint8) * 255
+    
+    # 2. Робимо крапочки тільки для сірої/напівтонової зони, а чорне малюємо суцільним
+    for y in range(0, h, cell_size):
+        for x in range(0, w, cell_size):
+            cell = gray[y : y + cell_size, x : x + cell_size]
+            if cell.size == 0:
+                continue
+            avg_val = np.mean(cell)
+            
+            # Якщо область темна (глибокий чорний) — заливаємо клітинку суцільним чорним без крапок
+            if avg_val < 90:
+                output[y : y + cell_size, x : x + cell_size] = (0, 0, 0)
+            # Якщо занадто світла — залишаємо білою
+            elif avg_val > 210:
+                continue
+            # Для сірого діапазону — малюємо крапочки
+            else:
+                radius = int(cell_size * 0.48 * (1.0 - (avg_val / 255.0)))
+                center_x = x + cell_size // 2
+                center_y = y + cell_size // 2
+                if radius > 0:
+                    cv2.circle(output, (center_x, center_y), radius, (0, 0, 0), -1)
 
-        img = cv2.flip(img ,1)
+    # 3. Твоя кольорова обробка Ocean для підсвічування контурів
+    _, gray_thresh = cv2.threshold(gray, 120, 255, cv2.THRESH_BINARY)
+    blur = cv2.blur(gray_thresh, (15, 15))
+    color_mapped_blur = cv2.applyColorMap(blur, cv2.COLORMAP_OCEAN)
 
-        fps +=30
+    b, g, r = cv2.split(color_mapped_blur)
+    rgba_img = cv2.merge([b, g, r, gray_thresh])
 
-        mp_img = mp.Image(mp.ImageFormat.SRGB,cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-        res = det.detect_for_video(mp_img,fps)
-        h,w = img.shape[:2]
+    color_mapped_img = cv2.applyColorMap(img, cv2.COLORMAP_OCEAN)
+    img_bgra = cv2.cvtColor(color_mapped_img, cv2.COLOR_BGR2BGRA)
 
-        if res.hand_landmarks:
-            for hand in res.hand_landmarks:
+    base_blend = cv2.addWeighted(img_bgra, 0.2, rgba_img, 0.8, 0)
 
-                dist =( ((hand[4].x-hand[8].x)**2+(hand[4].y-hand[8].y)**2)**0.5)*100
-                res = 1 + (dist-2)*99/(35-2)
-                res =int(max(1,min(res,100)))
-                img = cv2.resize(cv2.resize(img, (w//res, h//res)),(w,h),interpolation=cv2.INTER_NEAREST)
+    # 4. Змішуємо твій неоновий стиль з нашим чітким чорним і крапковим сірим
+    output_bgra = cv2.cvtColor(output, cv2.COLOR_BGR2BGRA)
+    final_output = cv2.addWeighted(base_blend, 0.3, output_bgra, 0.7, 0)
 
-                cv2.putText(img,str(res),(200,40),cv2.FONT_HERSHEY_SIMPLEX,1,(255,255,255),3)
+    cv2.imshow('Title', final_output)
 
-        cv2.imshow("name", img)
-
-        if cv2.waitKey(1) & 0xff == ord('q'):
-            break
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
 
 cap.release()
 cv2.destroyAllWindows()
