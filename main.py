@@ -2,7 +2,8 @@ import cv2
 import numpy as np
 
 cap = cv2.VideoCapture(1)
-
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 360)
 while cap.isOpened():
     run, img = cap.read()
     if not run:
