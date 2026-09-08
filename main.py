@@ -1,53 +1,41 @@
 import cv2
 import numpy as np
 
-cap = cv2.VideoCapture(0)
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 360)
-while cap.isOpened():
-    run, img = cap.read()
-    if not run:
-        break
-    
-    h, w = img.shape[:2]
-    cell_size = 10
+def apply_green_dot_matrix(image_path, grid_step=6, max_radius=2.5):
+    img = cv2.imread(image_path)
+    if img is None:
+        raise FileNotFoundError("Image not found")
+        
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    
-    halftone_output = np.zeros((h, w, 3), dtype=np.uint8)
-    
-    for y in range(0, h, cell_size):
-        for x in range(0, w, cell_size):
-            cell = gray[y : y + cell_size, x : x + cell_size]
-            if cell.size == 0:
+    h, w = gray.shape
+
+    canvas = np.zeros((h, w, 3), dtype=np.uint8)
+
+    green_color = (0, 255, 65)
+
+    for y in range(0, h, grid_step):
+        for x in range(0, w, grid_step):
+            intensity = gray[y, x]
+        
+            if intensity < 90:
                 continue
-            avg_val = np.mean(cell)
-            
-            radius = int(cell_size * 0.5 * (avg_val / 255.0))
-            center_x = x + cell_size // 2
-            center_y = y + cell_size // 2
-            
+                
+            norm_intensity = intensity / 255.0
+
+            radius = int(norm_intensity * max_radius)
             if radius > 0:
-                cv2.circle(halftone_output, (center_x, center_y), radius, (255, 255, 255), -1)
+                cv2.circle(canvas, (x, y), radius, green_color, -1)
+            else:
+                canvas[y, x] = green_color
 
-    _, gray_thresh = cv2.threshold(gray, 120, 255, cv2.THRESH_BINARY)
-    blur = cv2.blur(gray_thresh, (15, 15))
-    color_mapped_blur = cv2.applyColorMap(blur, cv2.COLORMAP_OCEAN)
+    blur = cv2.GaussianBlur(canvas, (5, 5), 0)
+    result = cv2.addWeighted(canvas, 1.0, blur, 0.4, 0)
 
-    b, g, r = cv2.split(color_mapped_blur)
-    rgba_img = cv2.merge([b, g, r, gray_thresh])
+    return result
 
-    color_mapped_img = cv2.applyColorMap(img, cv2.COLORMAP_OCEAN)
-    img_bgra = cv2.cvtColor(color_mapped_img, cv2.COLOR_BGR2BGRA)
+output_image = apply_green_dot_matrix("input.jpg", grid_step=5, max_radius=1.5)
 
-    base_blend = cv2.addWeighted(img_bgra, 0.2, rgba_img, 0.8, 0)
-
-    halftone_bgra = cv2.cvtColor(halftone_output, cv2.COLOR_BGR2BGRA)
-    output = cv2.addWeighted(base_blend, 0.4, halftone_bgra, 0.6, 0)
-
-    cv2.imshow('Title', output)
-
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
-
-cap.release()
+cv2.imshow("Green Dot Effect", output_image)
+cv2.imwrite("output_green_dot.png", output_image)
+cv2.waitKey(0)
 cv2.destroyAllWindows()
