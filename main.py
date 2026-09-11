@@ -1,41 +1,48 @@
-import cv2
-import numpy as np
+import cv2, numpy as np
 
-def apply_green_dot_matrix(image_path, grid_step=6, max_radius=2.5):
-    img = cv2.imread(image_path)
-    if img is None:
-        raise FileNotFoundError("Image not found")
-        
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    h, w = gray.shape
+def apply_vhs_effect(frame):
+    
+    return vhs_frame
 
-    canvas = np.zeros((h, w, 3), dtype=np.uint8)
+cap = cv2.VideoCapture(0)
 
-    green_color = (0, 255, 65)
+while cap.isOpened():
+    ret, frame = cap.read()
+    if not ret:
+        break
+    frame = cv2.flip(frame,1)
 
-    for y in range(0, h, grid_step):
-        for x in range(0, w, grid_step):
-            intensity = gray[y, x]
-        
-            if intensity < 90:
-                continue
-                
-            norm_intensity = intensity / 255.0
+    h, w, c = frame.shape
 
-            radius = int(norm_intensity * max_radius)
-            if radius > 0:
-                cv2.circle(canvas, (x, y), radius, green_color, -1)
-            else:
-                canvas[y, x] = green_color
+    shift = 3
+    b, g, r = cv2.split(frame)
+    
+    r_shifted = np.roll(r, -shift, axis=1)
+    b_shifted = np.roll(b, shift, axis=1)
+    
+    vhs_frame = cv2.merge([b_shifted, g, r_shifted])
 
-    blur = cv2.GaussianBlur(canvas, (5, 5), 0)
-    result = cv2.addWeighted(canvas, 1.0, blur, 0.4, 0)
+    num_lines = np.random.randint(2, 6)
+    for _ in range(num_lines):
+        y = np.random.randint(0, h - 5)
+        line_height = np.random.randint(1, 4)
+        line_shift = np.random.randint(-15, 15)
+        vhs_frame[y:y+line_height, :] = np.roll(vhs_frame[y:y+line_height, :], line_shift, axis=1)
 
-    return result
+    noise = np.random.randint(-15, 15, (h, w, c), dtype='int16')
+    vhs_frame = np.clip(vhs_frame.astype('int16') + noise, 0, 255).astype('uint8')
 
-output_image = apply_green_dot_matrix("input.jpg", grid_step=5, max_radius=1.5)
+    vhs_frame = cv2.GaussianBlur(vhs_frame, (3, 3), 0)
 
-cv2.imshow("Green Dot Effect", output_image)
-cv2.imwrite("output_green_dot.png", output_image)
-cv2.waitKey(0)
+    cv2.putText(vhs_frame, "PLAY  0:00:12", (30, 50), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+    cv2.putText(vhs_frame, "SEP 11 2026", (30, h - 30), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+
+    cv2.imshow("VHS Effect", vhs_frame)
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
 cv2.destroyAllWindows()
